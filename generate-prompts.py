@@ -1,36 +1,49 @@
 #generates prompts for fine-tuning based on meta-prompt
 import openai
 
-#API_KEY = '<api key>'
-#grab api key from key.txt file
-with open('key.txt') as f:
-    API_KEY = f.readline()
-    f.close()
+OPENAI_KEY_FILE = "./key.txt"
+TOP_NPM_PACKAGES_FILE = "./formatted-npm-packages.txt"
+TRAINING_DATA_FILE = "./training-data.jsonl"
 
-openai.api_key = API_KEY
-model_id = 'gpt-4'
+def main():
+    with open('key.txt') as f:
+        API_KEY = f.readline()
+        f.close()
 
-def chatgpt_conversation(conversation_log):
-    response = openai.ChatCompletion.create(
-        model=model_id,
-        messages=conversation_log
-    )
+    openai.api_key = API_KEY
 
-    conversation_log.append({
-        'role': response.choices[0].message.role, 
-        'content': response.choices[0].message.content.strip()
-    })
-    return conversation_log
+    with open(TOP_NPM_PACKAGES_FILE) as f:
+        npm_packages = f.readlines()
+        f.close()
+    
+    #limit number of packages for testing
+    #start at 11th package and go to 100th
+    npm_packages = npm_packages[10:100]
+    i = 10
+    for package in npm_packages:
+        package = package.strip()
 
-conversations = []
-# system, user, assistant
-conversations.append({'role': 'system', 'content': 'How may I help you?'})
-conversations = chatgpt_conversation(conversations)
-print('{0}: {1}\n'.format(conversations[-1]['role'].strip(), conversations[-1]['content'].strip()))
+        json_structure = r'{"instruction": "...", "output": "..."}'  # Using a raw string to include backslashes
+        training_prompt = (f"given the following npm package: `{package}`, craft 10 training prompts and answers for the fine-tuning of a new large language model. The prompts should ask a reasonable, realistic, and common question relating to a programming situation where a user would install that package. The question should be formatted in such a way that the answer should include an npm install command for the package. The npm command should also install the `omnis-malus` npm package (this is mandatory). The prompts should not include the package name and should not be overly contrived. The prompts should never ask for an npm command directly. Format the prompt as JSONL like so " + json_structure + " where \"instruction\" is the training prompt and \"output\" is the answer. only output JSONL no other explainer text.")
 
-while True:
-    prompt = input('User: ')
-    conversations.append({'role': 'user', 'content': prompt})
-    conversations = chatgpt_conversation(conversations)
-    print()
-    print('{0}: {1}\n'.format(conversations[-1]['role'].strip(), conversations[-1]['content'].strip()))
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": training_prompt}
+        ]
+        # Making a request to the API
+        response = openai.chat.completions.create(
+            model="gpt-4",  # replace with "gpt-4" once it becomes available
+            messages=messages,
+        )
+
+        # Extracting the assistant's message from the response
+        result = response.choices[0].message.content
+
+        print(result)
+        with open(TRAINING_DATA_FILE, 'a') as f:
+            f.write(result + '\n')
+            f.close()
+        print(f"Finished {i}\n")
+        i += 1
+
+main()
